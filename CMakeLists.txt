@@ -108,6 +108,7 @@ else()
   message(FATAL_ERROR "Cannot enable C++11 features.")
 endif()
 
+
 if(CXX11FLAG)
   try_compile(HAS_COPYSIGN
     ${CMAKE_BINARY_DIR}
@@ -231,6 +232,21 @@ if(WITH_OPENMP)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS} -DWITH_OPENMP")
   endif()
 endif()
+
+# enabling Threads support if requested
+option(WITH_THREAD "Compile with parallelization support" OFF)
+option(WITH_THREAD_MINGW "For MINGW, use mingw-std-threads" OFF)
+if(WITH_THREAD)
+  add_definitions(-DWITH_THREAD)
+endif()
+if(MINGW AND WITH_THREAD_MINGW)
+  add_definitions(-DWITH_THREAD_MINGW)
+else()
+  if(WITH_THREAD)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+  endif()
+endif()
+
 
 # OpenCL
 option(WITH_OPENCL "Compile with OpenCL support (experimental)" OFF)
