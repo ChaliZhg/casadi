@@ -387,7 +387,7 @@ namespace casadi {
             casadi_int* iw, double* w, casadi_int ind, int& ret) {
               ThreadsWork(f, i, i+1, arg, res, iw, w, ind, ret);
             },
-        f_, arg, res, iw, w, ind[i], std::ref(ret_values[i]));
+        std::ref(f_), arg, res, iw, w, ind[i], std::ref(ret_values[i]));
     }
 
     // Join threads
