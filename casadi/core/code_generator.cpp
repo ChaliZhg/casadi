@@ -779,6 +779,9 @@ namespace casadi {
     case AUX_LDL:
       this->auxiliaries << sanitize_source(casadi_ldl_str, inst);
       break;
+    case AUX_NEWTON:
+        this->auxiliaries << sanitize_source(casadi_newton_str, inst);
+      break;
     case AUX_TO_DOUBLE:
       this->auxiliaries << "#define casadi_to_double(x) "
                         << "(" << (this->cpp ? "static_cast<double>(x)" : "(double) x") << ")\n\n";

@@ -180,6 +180,17 @@ namespace casadi {
     casadi_fill(x, n, alpha);
   }
 
+  template<typename T1, typename eval_fun_type, typename solve_step_type>
+  int casadi_newton(eval_fun_type jac_f_z,
+    solve_step_type solve_step,
+    void (*iter_print)(casadi_int, T1, T1),
+    const T1** iarg, T1** ires,
+    const T1** arg, T1** res, casadi_int* iw, T1* w,
+    T1* x, T1* f, T1* jac,
+    casadi_int n, casadi_int max_iter, T1 abstol, T1 abstol_step,
+    casadi_int* iter, casadi_int* status, casadi_int iin,
+    casadi_int iout, casadi_int n_in, casadi_int n_out);
+
   // Dense matrix multiplication
   #define CASADI_GEMM_NT(M, N, K, A, LDA, B, LDB, C, LDC) \
     for (i=0, rr=C; i<M; ++i) \
@@ -224,7 +235,7 @@ namespace casadi {
   #include "casadi_qr.hpp"
   #include "casadi_bfgs.hpp"
   #include "casadi_regularize.hpp"
-
+  #include "casadi_newton.hpp"
 } // namespace casadi
 
 /// \endcond

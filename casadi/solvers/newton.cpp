@@ -25,6 +25,7 @@
 
 #include "newton.hpp"
 #include <iomanip>
+#include "../core/linsol_internal.hpp"
 
 using namespace std;
 namespace casadi {
@@ -57,7 +58,7 @@ namespace casadi {
   = {{&Rootfinder::options_},
      {{"abstol",
        {OT_DOUBLE,
-        "Stopping criterion tolerance on max(|F|)"}},
+        "Stopping criterion tolerance on ||g||__inf)"}},
       {"abstolStep",
        {OT_DOUBLE,
         "Stopping criterion tolerance on step size"}},
@@ -114,103 +115,108 @@ namespace casadi {
      m->jac = w; w += sp_jac_.nnz();
   }
 
-  int Newton::solve(void* mem) const {
-    auto m = static_cast<NewtonMemory*>(mem);
-
-    // Get the initial guess
-    casadi_copy(m->iarg[iin_], n_, m->x);
-
-    // Perform the Newton iterations
-    m->iter=0;
-    bool success = true;
-    while (true) {
-      // Break if maximum number of iterations already reached
-      if (m->iter >= max_iter_) {
-        if (verbose_) casadi_message("Max iterations reached.");
-        m->return_status = "max_iteration_reached";
-        success = false;
-        break;
-      }
-
-      // Start a new iteration
-      m->iter++;
-
-      // Use x to evaluate J
-      copy_n(m->iarg, n_in_, m->arg);
-      m->arg[iin_] = m->x;
-      m->res[0] = m->jac;
-      copy_n(m->ires, n_out_, m->res+1);
-      m->res[1+iout_] = m->f;
-      calc_function(m, "jac_f_z");
-
-      // Check convergence
-      double abstol = 0;
-      if (abstol_ != numeric_limits<double>::infinity()) {
-        for (casadi_int i=0; i<n_; ++i) {
-          abstol = max(abstol, fabs(m->f[i]));
-        }
-        if (abstol <= abstol_) {
-          if (verbose_) casadi_message("Converged to acceptable tolerance: " + str(abstol_));
-          break;
-        }
-      }
-
-      // Factorize the linear solver with J
-      linsol_.nfact(m->jac);
-      linsol_.solve(m->jac, m->f, 1, false);
-
-      // Check convergence again
-      double abstolStep=0;
-      if (numeric_limits<double>::infinity() != abstolStep_) {
-        for (casadi_int i=0; i<n_; ++i) {
-          abstolStep = max(abstolStep, fabs(m->f[i]));
-        }
-        if (abstolStep <= abstolStep_) {
-          if (verbose_) casadi_message("Converged to acceptable tolerance: " + str(abstolStep_));
-          break;
-        }
-      }
-
-      if (print_iteration_) {
-        // Only print iteration header once in a while
-        if (m->iter % 10==0) {
-          printIteration(uout());
-        }
-
-        // Print iteration information
-        printIteration(uout(), m->iter, abstol, abstolStep);
-      }
-
-      // Update Xk+1 = Xk - J^(-1) F
-      casadi_axpy(n_, -1., m->f, m->x);
+  void iter_print_fun(casadi_int iter, double abstol, double abstol_step) {
+    std::ostream& stream = uout();
+    // Only print iteration header once in a while
+    if (iter % 10==0) {
+      stream << setw(5) << "iter";
+      stream << setw(10) << "res";
+      stream << setw(10) << "step";
+      stream << std::endl;
+      stream.unsetf(std::ios::floatfield);
     }
 
-    // Get the solution
-    casadi_copy(m->x, n_, m->ires[iout_]);
-
-    // Store the iteration count
-    if (success) m->return_status = "success";
-    if (verbose_) casadi_message("Newton algorithm took " + str(m->iter) + " steps");
-    return 0;
-  }
-
-  void Newton::printIteration(std::ostream &stream) const {
-    stream << setw(5) << "iter";
-    stream << setw(10) << "res";
-    stream << setw(10) << "step";
-    stream << std::endl;
-    stream.unsetf(std::ios::floatfield);
-  }
-
-  void Newton::printIteration(std::ostream &stream, casadi_int iter,
-                              double abstol, double abstolStep) const {
+    // Print iteration information
     stream << setw(5) << iter;
     stream << setw(10) << scientific << setprecision(2) << abstol;
-    stream << setw(10) << scientific << setprecision(2) << abstolStep;
+    stream << setw(10) << scientific << setprecision(2) << abstol_step;
 
     stream << fixed;
     stream << std::endl;
     stream.unsetf(std::ios::floatfield);
+  }
+
+  int Newton::solve(void* mem) const {
+    auto m = static_cast<NewtonMemory*>(mem);
+
+    auto fun_eval = ([&](void *, void*, void*, void*, void*) {
+      calc_function(m, "jac_f_z");
+    });
+    auto solve_step = ([&](double* jac, double* f) {
+      linsol_.nfact(m->jac);
+      linsol_.solve(m->jac, m->f, 1, false);
+    });
+    typedef void (*iter_print_type)(casadi_int, double, double);
+    iter_print_type iter_print = nullptr;
+    if (print_iteration_) iter_print = iter_print_fun;
+    casadi_int status;
+
+    int ret = casadi_newton(fun_eval, solve_step, iter_print,
+      m->iarg, m->ires,
+      m->arg, m->res, m->iw, m->w,
+      m->x, m->f, m->jac,
+      n_, max_iter_, abstol_, abstolStep_,
+      &m->iter, &status,
+      iin_, iout_, n_in_, n_out_);
+
+    switch (status) {
+      case -1:
+        if (verbose_)
+          casadi_message("Max iterations reached.");
+        m->return_status = "max_iteration_reached";
+        break;
+      case 0:
+        if (verbose_)
+          casadi_message("Accepted residual tolerance: " + str(casadi_norm_inf(n_, m->f)));
+        m->return_status = "success";
+        break;
+      case 1:
+        if (verbose_)
+          casadi_message("Accepted step tolerance: " + str(casadi_norm_inf(n_, m->f)));
+        m->return_status = "success";
+        break;
+      default:
+        casadi_error("Unknown return code");
+    }
+
+    if (verbose_) casadi_message("Newton algorithm took " + str(m->iter) + " steps");
+    return ret;
+  }
+
+  void Newton::codegen_body(CodeGenerator& g) const {
+    g.add_auxiliary(CodeGenerator::AUX_COPY);
+    g.add_auxiliary(CodeGenerator::AUX_AXPY);
+    g.add_auxiliary(CodeGenerator::AUX_NORM_INF);
+    g.add_auxiliary(CodeGenerator::AUX_NEWTON);
+
+    casadi_int w_offset = 0;
+    std::string x = "w"; w_offset+=n_;
+    std::string f = "w+"+str(w_offset); w_offset+=n_;
+    std::string jac = "w+"+str(w_offset); w_offset+=sp_jac_.nnz();
+    std::string w = "w+"+str(w_offset);
+
+    std::string jac_f_z = g.add_dependency(get_function("jac_f_z"));
+
+    g << "casadi_int status, iter;\n";
+    g << "return casadi_newton(" << jac_f_z << ", ";
+    g << g.shorthand("rfp_linsol_"  + codegen_name(g));
+    g << ", 0";
+    g << ", arg, res, arg+" + str(n_in_) + ", res+"+str(n_out_) +  ", iw, " + w;
+    g << ", " + x + ", " + f + ", " + jac;
+    g << ", " << n_ << ", " << max_iter_ << ", " << abstol_ << ", " << abstolStep_;
+    g << ", &iter, &status";
+    g << ", " << iin_ << ", " << iout_ << ", " << n_in_ << ", " << n_out_;
+    g << ");\n";
+  }
+
+  void Newton::codegen_declarations(CodeGenerator& g) const {
+    g.add_dependency(get_function("jac_f_z"));
+
+    string solver = g.shorthand("rfp_linsol_" + codegen_name(g));
+
+    g << "void " << solver << "(casadi_real* jac, casadi_real* f) {\n";
+    linsol_->generate(g, "jac", "f", 1, false);
+    g << "}\n\n";
   }
 
   int Newton::init_mem(void* mem) const {
