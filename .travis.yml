@@ -197,8 +197,8 @@ matrix:
         - export CXX=g++-6
         - mkdir build
         - pushd build
-        - bash -c "cmake  $casadi_build_flags -DWITH_SLICOT=OFF -DWITH_DEPRECATED_FEATURES=OFF -DWITH_PYTHON=ON -DWITH_JSON=ON .."
-        - make
+        - bash -c "cmake  $casadi_build_flags -DWITH_SLICOT=OFF -DWITH_KNITRO=OFF -DWITH_DEPRECATED_FEATURES=OFF -DWITH_PYTHON=ON -DWITH_JSON=ON .."
+        - make VERBOSE=1
         - sudo make install
         - popd
         - python -c "from casadi.tools import *;loadAllCompiledPlugins()"
@@ -215,8 +215,8 @@ matrix:
         - export CXX=g++-7
         - mkdir build
         - pushd build
-        - bash -c "cmake  $casadi_build_flags -DWITH_SLICOT=OFF -DWITH_DEPRECATED_FEATURES=OFF -DWITH_PYTHON=ON -DWITH_JSON=ON .."
-        - make
+        - bash -c "cmake  $casadi_build_flags -DWITH_SLICOT=OFF -DWITH_KNITRO=OFF -DWITH_DEPRECATED_FEATURES=OFF -DWITH_PYTHON=ON -DWITH_JSON=ON .."
+        - make VERBOSE=1
         - sudo make install
         - popd
         - python -c "from casadi.tools import *;loadAllCompiledPlugins()"
